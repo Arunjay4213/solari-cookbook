@@ -17,7 +17,8 @@ The transcript is written before the sandbox is killed, so a crashed run still l
 
 - Generated apps are **static only**: plain HTML/CSS/JS files, no build step, no npm dependencies inside the sandbox.
   Served with `python3 -m http.server` (present in the `base` template, proven in the quickstart).
-- Feedback to the model is **text only**. Screenshots are saved for humans, never sent to OpenAI.
+- Feedback to the model in the functional loop is **text only**; test screenshots are saved for humans.
+  The phase 2 visual review is the one deliberate exception: it exists to send viewport captures to the model.
 - **One sandbox** lives across all fix iterations (files are overwritten in place; the static server needs no restart).
 - Never more than 1 sandbox + 1 desktop concurrently (Starter plan caps at 2).
 - Every session ends with `kill()` in a `finally`. `close()` alone leaves the VM running.

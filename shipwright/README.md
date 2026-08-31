@@ -38,6 +38,8 @@ If that happens, the agent spends one functional fix round to get back to green 
 The loop stops when the model approves, when `--visual-iters` is reached, or when a round repeats the previous round's issues word for word, which means it has stopped converging.
 Visual review is real mode only: stub mode has no model to review with, and says so instead of pretending.
 
+Status, stated honestly: every phase 2 component is verified against the live APIs (the vision review with real calls on both branches, the capture path against a live browser), and the orchestration is proven in stub mode, but a full end-to-end visual run has not completed yet - the two runs that reached for it surfaced and paid for two real harness bugs (both fixed, both documented in the git history) before the credit budget ran out.
+
 ## Quickstart
 
 ```sh
