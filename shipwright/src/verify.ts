@@ -378,15 +378,27 @@ async function captureOne(
  */
 export function joinUrl(base: string, path: string): string {
   const url = new URL(base)
-  const root = url.pathname.replace(/\/+$/, "")
-  url.pathname = root + (path.startsWith("/") ? path : `/${path}`)
+  // Parse the test path in its own right, against a throwaway origin. Assigning
+  // it straight to `pathname` would percent-encode "#" and "?" into the path,
+  // and hash routing is the only routing a static app has.
+  const rel = new URL(path.startsWith("/") ? path : `/${path}`, "http://x")
+
+  url.pathname = url.pathname.replace(/\/+$/, "") + rel.pathname
+  // The base's token comes first, then whatever the test asked for.
+  url.search =
+    url.search && rel.search ? `${url.search}&${rel.search.slice(1)}` : url.search || rel.search
+  url.hash = rel.hash
   return url.toString()
 }
 
-/** The page without its `?pt_token=...`: safe to print, log, and hand to the model. */
+/**
+ * The page without its `?pt_token=...`: safe to print, log, and hand to the
+ * model. The hash is kept - for a hash-routed static app it is the route the
+ * test was on, which the model needs to make sense of the failure.
+ */
 function stripQuery(url: string): string {
   const parsed = new URL(url)
-  return `${parsed.origin}${parsed.pathname}`
+  return `${parsed.origin}${parsed.pathname}${parsed.hash}`
 }
 
 function safeName(name: string): string {
