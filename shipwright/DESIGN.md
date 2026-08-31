@@ -29,15 +29,47 @@ The transcript is written before the sandbox is killed, so a crashed run still l
 
 ## Module contract (frozen - see src/types.ts)
 
-- `src/brain.ts` - `createBrain({mode, model})` returns `{generate(idea), fix(spec, failures)}`, plus an optional `usage()` reporting cumulative measured token counts.
-  `usage()` is present in openai mode only: stub mode calls no model, so it has nothing to report.
+- `src/brain.ts` - `createBrain({mode, model, visualModel})` returns `{generate(idea), fix(spec, failures)}`, plus optional `visualReview(spec, screens)` and `usage()`.
+  Both optional members are present in openai mode only: stub mode calls no model, so it has nothing to review with and nothing to report.
+  `visualReview` runs on `visualModel` (default `gpt-5.6-luna`), not on the build model.
   `mode: "openai"` uses structured JSON output; `mode: "stub"` serves `fixtures/` (a todo app with one planted bug, plus its fixed version) so the whole loop runs E2E with zero OpenAI cost.
 - `src/sandbox.ts` - `deploy(files, opts)` returns `{url, redeploy(files), kill()}`.
 - `src/verify.ts` - `verify(url, tests, runDir, opts)` returns `{passed, failures, replayPaths, screenshotPaths}`.
-- `src/index.ts` - CLI orchestrator: `npm start -- "<idea>" [--stub] [--model <id>] [--max-iters N]`.
+  Also exports `captureScreens(url, viewports, outDir)` for phase 2, returning one `ScreenCapture` per viewport.
+- `src/index.ts` - CLI orchestrator: `npm start -- "<idea>" [--stub] [--model <id>] [--max-iters N] [--visual-iters N] [--visual-model <id>]`.
   `--max-iters` counts verify rounds, so the default 3 allows at most 2 fixes.
+  `--visual-iters` counts visual rounds (default 2); 0 skips phase 2 entirely.
+  `--visual-model` defaults to `gpt-5.6-luna` and is passed straight to `createBrain`.
   `--showcase` is deferred and not implemented: passing it exits with a usage error.
   When it is built it will open the finished app in Chrome on a Solari desktop after tests pass and print the VNC `streamUrl` (running while the build sandbox is still up: 1 sandbox + 1 desktop = exactly the plan limit, so nothing else may be alive).
+
+## Phase 2: visual review loop (after functional green)
+
+Real mode only; stub mode skips it and says so.
+After the functional tests pass, the agent reviews its own UI:
+
+1. **Capture**: one viewport-sized screenshot (not full page) per viewport, taken from the deployed preview URL, plus one deterministic signal: whether the page scrolls horizontally at that viewport.
+2. **Review**: screenshots go to the model (this is the one deliberate exception to "text only") with the current files; it returns a structured verdict: `approved`, or a list of issues plus the complete corrected app.
+3. **Re-verify**: after every visual fix the functional tests rerun before the next visual round; a visual fix that breaks behavior gets one functional fix round before continuing.
+4. Stop on: approved, `--visual-iters` cap (default 2), or the same issue list twice in a row (oscillation guard).
+
+As implemented: captures land in `runs/<ts>/visual-<round>/`, and that round's re-verify lands in `visual-<round>/recheck/`, or additionally `recheck-after-fix/` when a functional fix was needed.
+The oscillation guard compares the issue list to the previous round's and stops before applying the repeated fix, since applying it again would only spend tokens.
+A visual round that leaves the app functionally red after its one functional fix stops the run with exit 1.
+The review model is capped by the org's per-minute token limit rather than by the model's own context: a two-screenshot request exceeds the `gpt-5.6-sol` allowance on a low tier and comes back as a 429, so `brain.ts` appends a readable hint pointing at `--visual-model`.
+
+Honesty note: the model grades its own work against its own taste with no reference design.
+"Approved" means it found nothing more to fix, not objective pixel perfection.
+The vision-input probe measured 664 input tokens for one 390x844 PNG at `detail: "auto"`, so images are cheap; full-file rewrites in each visual round are the real cost.
+
+## Design choices
+
+**Response chaining (`previous_response_id`) was considered and rejected.**
+The Responses API can thread calls together server-side, which would let a fix or a visual round refer back to the previous turn instead of resending the whole app.
+It was rejected because program state, not conversation state, is the source of truth here.
+The orchestrator already holds the current `AppSpec` and rewrites it in place, and the sandbox holds the deployed files; a server-side thread would be a second copy of that state that can silently disagree with the first.
+Chaining would also make each call depend on a response id from an earlier call, so a retry, a model switch (phase 2 deliberately runs on a different model), or a resumed run would have to reason about a conversation that no longer matches what is deployed.
+The saving is pennies per run against a correctness risk in the one thing the loop is supposed to prove, so every call is sent standalone and complete.
 
 ## Cost model
 

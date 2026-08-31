@@ -67,9 +67,32 @@ export interface TokenUsage {
   outputTokens: number
 }
 
+/** A viewport-sized screenshot of the deployed app, for the visual review loop. */
+export interface ScreenCapture {
+  /** e.g. "desktop-1280x800". */
+  name: string
+  viewport: { width: number; height: number }
+  /** PNG bytes of the viewport (never full page). */
+  png: Uint8Array
+  /** Local file the capture was saved to. */
+  path: string
+  /** True when the page scrolls horizontally at this viewport. */
+  overflowX: boolean
+}
+
+export interface VisualReview {
+  approved: boolean
+  /** Empty when approved. */
+  issues: string[]
+  /** Complete corrected app; null when approved. */
+  spec: AppSpec | null
+}
+
 export interface Brain {
   generate(idea: string): Promise<AppSpec>
   fix(spec: AppSpec, failures: Failure[]): Promise<AppSpec>
+  /** Reviews screenshots of the running app. Absent in stub mode. */
+  visualReview?(spec: AppSpec, screens: ScreenCapture[]): Promise<VisualReview>
   /** Cumulative usage so far. Absent in stub mode, which calls no model. */
   usage?(): TokenUsage
 }
@@ -78,4 +101,9 @@ export interface BrainOptions {
   mode: "openai" | "stub"
   /** OpenAI model id, default "gpt-5.6-sol". Ignored in stub mode. */
   model?: string
+  /**
+   * Model for visualReview, default "gpt-5.6-luna": image payloads exceed
+   * low-tier per-minute token limits on gpt-5.6-sol.
+   */
+  visualModel?: string
 }

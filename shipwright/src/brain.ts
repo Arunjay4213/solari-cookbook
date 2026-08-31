@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import OpenAI from "openai"
+import OpenAI, { RateLimitError } from "openai"
 import type {
   AppFile,
   AppSpec,
@@ -8,15 +8,23 @@ import type {
   Brain,
   BrainOptions,
   Failure,
+  ScreenCapture,
   TestSpec,
   TokenUsage,
+  VisualReview,
 } from "./types.js"
 
 const DEFAULT_MODEL = "gpt-5.6-sol"
+/**
+ * Visual review runs on a different model by default: a review payload carries
+ * two screenshots, and on a low tier that request alone exceeds the per-minute
+ * token allowance for the build model, which fails as a 429 no retry can fix.
+ */
+const DEFAULT_VISUAL_MODEL = "gpt-5.6-luna"
 
 export function createBrain(opts: BrainOptions): Brain {
   if (opts.mode === "stub") return stubBrain()
-  return openaiBrain(opts.model ?? DEFAULT_MODEL)
+  return openaiBrain(opts.model ?? DEFAULT_MODEL, opts.visualModel ?? DEFAULT_VISUAL_MODEL)
 }
 
 // ---------------------------------------------------------------- stub mode
@@ -51,6 +59,20 @@ function loadFixture(dir: string): AppSpec {
 
 // -------------------------------------------------------------- openai mode
 
+/** The flat file list, shared by the generation and visual-review schemas. */
+const FILES_SCHEMA: Record<string, unknown> = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["path", "content"],
+    properties: {
+      path: { type: "string", description: "relative path, e.g. index.html or js/app.js" },
+      content: { type: "string", description: "complete file contents" },
+    },
+  },
+}
+
 /**
  * Strict structured-output schema. Strict mode demands `additionalProperties:
  * false` plus every property listed in `required`, so the four Assertion
@@ -63,18 +85,7 @@ const APP_SPEC_SCHEMA: Record<string, unknown> = {
   required: ["name", "files", "tests"],
   properties: {
     name: { type: "string", description: "kebab-case app name" },
-    files: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["path", "content"],
-        properties: {
-          path: { type: "string", description: "relative path, e.g. index.html or js/app.js" },
-          content: { type: "string", description: "complete file contents" },
-        },
-      },
-    },
+    files: FILES_SCHEMA,
     tests: {
       type: "array",
       items: {
@@ -112,6 +123,30 @@ const APP_SPEC_SCHEMA: Record<string, unknown> = {
   },
 }
 
+/**
+ * Verdict schema for the visual review. `files` is the same flat file list as
+ * generation, nullable so an approval can omit it; the tests are deliberately
+ * absent, because a visual pass must never rewrite them.
+ */
+const VISUAL_REVIEW_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["approved", "issues", "files"],
+  properties: {
+    approved: { type: "boolean", description: "true only when nothing is left to fix" },
+    issues: {
+      type: "array",
+      description: "concrete visual problems, empty when approved",
+      items: { type: "string" },
+    },
+    files: {
+      ...FILES_SCHEMA,
+      type: ["array", "null"],
+      description: "the complete corrected app, null when approved",
+    },
+  },
+}
+
 const SYSTEM_PROMPT = `You are a senior front-end engineer. You produce complete, self-contained static web apps and the end-to-end tests that prove they work.
 
 App rules:
@@ -134,7 +169,7 @@ Test rules:
 - Set the fields a kind does not use to null.
 - A "thenExists" selector must match nothing before the interaction, otherwise the test proves nothing. Start lists and result areas empty.`
 
-function openaiBrain(model: string): Brain {
+function openaiBrain(model: string, visualModel: string): Brain {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw new Error(
@@ -149,12 +184,14 @@ function openaiBrain(model: string): Brain {
     usage: () => ({ ...tally }),
 
     async generate(idea: string) {
-      return callModel(
+      const raw = await callModel(
         client,
         model,
         `Build a static web app for this idea, then write its end-to-end tests.\n\nIdea: ${idea}`,
+        APP_SPEC_FORMAT,
         tally,
       )
+      return parseAppSpec(raw)
     },
 
     async fix(spec: AppSpec, failures: Failure[]) {
@@ -164,14 +201,61 @@ function openaiBrain(model: string): Brain {
         "Return the same tests unless a test itself is wrong.",
         "",
         "Current files:",
-        ...spec.files.map((f) => `--- ${f.path} ---\n${f.content}`),
+        ...spec.files.map(formatFile),
         "",
         "Failures:",
         ...failures.map(formatFailure),
       ].join("\n")
-      return callModel(client, model, input, tally)
+      const raw = await callModel(client, model, input, APP_SPEC_FORMAT, tally)
+      return parseAppSpec(raw)
+    },
+
+    async visualReview(spec: AppSpec, screens: ScreenCapture[]) {
+      if (screens.length === 0) throw new Error("visualReview needs at least one screenshot.")
+      const brief = [
+        `You built the static web app "${spec.name}". It already passes its end-to-end tests, so this pass is about how it looks, not what it does.`,
+        "Screenshots of the deployed app follow, one per viewport, each labelled with its viewport and with whether the page scrolls horizontally there.",
+        "Judge alignment, spacing and rhythm, visual hierarchy, colour contrast and readability, how well the layout adapts at each viewport shown, and overall polish.",
+        'If anything meaningful is still wrong, set "approved" to false, list the concrete issues, and return the complete corrected app in "files": every file in full, under the same rules as the original build (static only, no external resources, index.html at the app root).',
+        'If the design is genuinely done, set "approved" to true with an empty "issues" list and null "files". Do not invent nitpicks to look thorough.',
+        "Never approve a viewport that reports horizontal overflow: that is always a real bug.",
+        "The tests are fixed and are not part of this pass. Do not change any id, class or text that the app's markup exposes to them; restyle the markup instead.",
+        "",
+        "Current files:",
+        ...spec.files.map(formatFile),
+      ].join("\n")
+
+      const content: OpenAI.Responses.ResponseInputMessageContentList = [
+        { type: "input_text", text: brief },
+      ]
+      for (const s of screens) {
+        content.push({
+          type: "input_text",
+          text: `${s.name}, horizontal overflow: ${s.overflowX ? "yes" : "no"}`,
+        })
+        // ResponseInputImage (responses.d.ts:3275): a base64 data URL is accepted
+        // in place of a fetchable one, so nothing has to be uploaded first.
+        content.push({
+          type: "input_image",
+          image_url: `data:image/png;base64,${Buffer.from(s.png).toString("base64")}`,
+          detail: "auto",
+        })
+      }
+
+      const raw = await callModel(
+        client,
+        visualModel,
+        [{ role: "user", content }],
+        { name: "visual_review", schema: VISUAL_REVIEW_SCHEMA },
+        tally,
+      )
+      return parseVisualReview(raw, spec)
     },
   }
+}
+
+function formatFile(f: AppFile): string {
+  return `--- ${f.path} ---\n${f.content}`
 }
 
 function formatFailure(f: Failure): string {
@@ -179,21 +263,36 @@ function formatFailure(f: Failure): string {
   return `- [${f.test}] ${f.message}${errors}`
 }
 
+/** The structured-output format a call asks for. */
+interface OutputFormat {
+  name: string
+  schema: Record<string, unknown>
+}
+
+const APP_SPEC_FORMAT: OutputFormat = { name: "app_spec", schema: APP_SPEC_SCHEMA }
+
+/** Returns the model's raw JSON text; each caller parses it into its own shape. */
 async function callModel(
   client: OpenAI,
   model: string,
-  input: string,
+  input: OpenAI.Responses.ResponseCreateParams["input"],
+  format: OutputFormat,
   tally: TokenUsage,
-): Promise<AppSpec> {
+): Promise<string> {
   // Non-streaming overload: openai/resources/responses/responses.d.ts:51.
-  const res = await client.responses.create({
-    model,
-    instructions: SYSTEM_PROMPT,
-    input,
-    text: {
-      format: { type: "json_schema", name: "app_spec", schema: APP_SPEC_SCHEMA, strict: true },
-    },
-  })
+  let res: OpenAI.Responses.Response
+  try {
+    res = await client.responses.create({
+      model,
+      instructions: SYSTEM_PROMPT,
+      input,
+      text: {
+        format: { type: "json_schema", name: format.name, schema: format.schema, strict: true },
+      },
+    })
+  } catch (err) {
+    throw explainTokenLimit(err, model)
+  }
 
   // Recorded before the output check: an incomplete response is still billed.
   // `usage` is optional on Response (responses.d.ts:1010), so tokens are added
@@ -209,31 +308,77 @@ async function callModel(
     const why = res.error?.message ?? res.incomplete_details?.reason ?? res.status ?? "unknown"
     throw new Error(`Model ${model} returned no output (${why}).`)
   }
-  return parseAppSpec(text)
+  return text
+}
+
+/**
+ * A single request larger than the org's per-minute token allowance comes back
+ * as a 429, which reads like ordinary rate limiting but no amount of waiting or
+ * retrying fixes it: the payload has to shrink or move to another model. The
+ * SDK raises 429s as RateLimitError, an APIError carrying `status` and `code`
+ * (openai/core/error.d.ts:47 and :4). Anything else is passed through untouched.
+ */
+function explainTokenLimit(err: unknown, model: string): unknown {
+  if (!(err instanceof RateLimitError)) return err
+  if (!/too large|tokens per min/i.test(err.message)) return err
+  return new Error(
+    `${err.message}\nThis request exceeds the org's per-minute token limit for ${model}; try --visual-model gpt-5.6-luna or a smaller app.`,
+  )
 }
 
 // ---------------------------------------------------------------- validation
 
-function parseAppSpec(raw: string): AppSpec {
-  let data: unknown
+function parseJson(raw: string): unknown {
   try {
-    data = JSON.parse(raw)
+    return JSON.parse(raw)
   } catch {
     throw new Error(`Model output was not valid JSON. First 300 chars: ${raw.slice(0, 300)}`)
   }
-  const root = asObject(data, "response")
+}
+
+function parseAppSpec(raw: string): AppSpec {
+  const root = asObject(parseJson(raw), "response")
 
   const name = asString(root["name"], "name")
-  const files = asArray(root["files"], "files").map((f, i) => toFile(f, `files[${i}]`))
-  if (files.length === 0) throw new Error("Model returned no files.")
-  if (!files.some((f) => f.path === "index.html")) {
-    throw new Error(`Model returned no index.html. Got: ${files.map((f) => f.path).join(", ")}`)
-  }
+  const files = toFiles(root["files"], "files")
 
   const tests = asArray(root["tests"], "tests").map((t, i) => toTest(t, `tests[${i}]`))
   if (tests.length === 0) throw new Error("Model returned no tests.")
 
   return { name, files, tests }
+}
+
+/**
+ * The tests are taken from `spec`, never from the model: a visual pass fixes
+ * pixels, and rewriting the tests it is about to be graded by would make the
+ * next functional round meaningless.
+ */
+function parseVisualReview(raw: string, spec: AppSpec): VisualReview {
+  const root = asObject(parseJson(raw), "response")
+
+  const approved = root["approved"]
+  if (typeof approved !== "boolean") {
+    throw new Error(`approved must be a boolean, got ${describe(approved)}`)
+  }
+  if (approved) return { approved: true, issues: [], spec: null }
+
+  const issues = asArray(root["issues"], "issues").map((s, i) => asString(s, `issues[${i}]`))
+  if (issues.length === 0) throw new Error("Model rejected the design but listed no issues.")
+  if (root["files"] == null) {
+    throw new Error("Model rejected the design but returned no corrected files.")
+  }
+
+  const files = toFiles(root["files"], "files")
+  return { approved: false, issues, spec: { name: spec.name, files, tests: spec.tests } }
+}
+
+function toFiles(value: unknown, where: string): AppFile[] {
+  const files = asArray(value, where).map((f, i) => toFile(f, `${where}[${i}]`))
+  if (files.length === 0) throw new Error("Model returned no files.")
+  if (!files.some((f) => f.path === "index.html")) {
+    throw new Error(`Model returned no index.html. Got: ${files.map((f) => f.path).join(", ")}`)
+  }
+  return files
 }
 
 function toFile(value: unknown, where: string): AppFile {

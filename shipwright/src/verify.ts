@@ -7,7 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Solari, SolariError } from "@solarisdk/browser"
 import type { BrowserSession } from "@solarisdk/browser"
-import type { Assertion, Failure, TestSpec, VerifyOptions, VerifyResult } from "./types.js"
+import type { Assertion, Failure, ScreenCapture, TestSpec, VerifyOptions, VerifyResult } from "./types.js"
 
 // Playwright's own types come from a transitive package; deriving them from the
 // SDK keeps this file honest about what it actually calls.
@@ -24,6 +24,10 @@ const REPLAY_INTERVAL_MS = 3_000
 /** Console errors are unbounded in principle; the model only needs a sample. */
 const CONSOLE_ERRORS_KEPT = 50
 const CONSOLE_ERRORS_IN_MESSAGE = 5
+/** Fonts and first paint land after domcontentloaded; a capture taken too early shows the model a page mid-render. */
+const CAPTURE_SETTLE_MS = 500
+/** Below this width the app is being judged as a phone layout. */
+const DESKTOP_MIN_WIDTH = 1024
 
 interface TestOutcome {
   failure?: Failure
@@ -119,7 +123,7 @@ async function runTest(
           outcome.failure = await runAssertions(page, test, shown, consoleErrors)
         }
       } catch (err) {
-        outcome.failure = fail(test, `opening ${shown} failed: ${describe(err)}`, consoleErrors)
+        outcome.failure = fail(test, `opening ${shown} failed: ${describe(err, target)}`, consoleErrors)
       }
 
       // Console errors fail the test only when nothing else already did.
@@ -139,7 +143,7 @@ async function runTest(
     }
   } catch (err) {
     // `??=` so a close() error never hides the real assertion failure.
-    outcome.failure ??= fail(test, `browser session failed: ${describe(err)}`, consoleErrors)
+    outcome.failure ??= fail(test, `browser session failed: ${describe(err, target)}`, consoleErrors)
   }
 
   if (sessionId) {
@@ -287,6 +291,76 @@ async function pool<T, R>(items: T[], limit: number, worker: (item: T) => Promis
 }
 
 /**
+ * Screenshots the deployed app once per viewport for the visual review round.
+ * These are the model's eyes, so unlike the screenshots taken during a test a
+ * missing capture is fatal: a blind visual round would review nothing.
+ */
+export async function captureScreens(
+  url: string,
+  viewports: { width: number; height: number }[],
+  outDir: string,
+): Promise<ScreenCapture[]> {
+  const apiKey = process.env.SOLARI_API_KEY
+  if (!apiKey) {
+    throw new Error("captureScreens: SOLARI_API_KEY is not set (put it in .env)")
+  }
+
+  await mkdir(outDir, { recursive: true })
+  const target = joinUrl(url, "/")
+  const shown = stripQuery(target)
+  const solari = new Solari({ apiKey })
+  const captures: ScreenCapture[] = []
+
+  try {
+    // Two or three short sessions: sequential keeps the session count obvious.
+    for (const viewport of viewports) {
+      try {
+        captures.push(await captureOne(solari, target, viewport, outDir))
+      } catch (err) {
+        throw new Error(
+          `captureScreens: capturing ${shown} at ${viewport.width}x${viewport.height} failed: ${describe(err, target)}`,
+        )
+      }
+    }
+  } finally {
+    await solari.close()
+  }
+  return captures
+}
+
+async function captureOne(
+  solari: Solari,
+  target: string,
+  viewport: { width: number; height: number },
+  outDir: string,
+): Promise<ScreenCapture> {
+  // No recording: these are working images for the model, not run evidence.
+  const browser = await solari.launch()
+  try {
+    const context = await browser.newContext({ viewport })
+    const page = await context.newPage()
+
+    const response = await page.goto(target, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_MS })
+    if (!response) throw new Error("the navigation produced no response")
+    if (response.status() >= 400) throw new Error(`the server answered HTTP ${response.status()}`)
+    await sleep(CAPTURE_SETTLE_MS)
+
+    const path = join(outDir, `capture-${viewport.width}x${viewport.height}.png`)
+    // Viewport only: the model judges what a visitor sees, not the whole scroll
+    // height. screenshot() defaults to no timeout, hence the explicit one.
+    const png = await page.screenshot({ path, timeout: ACTION_TIMEOUT_MS })
+    const overflowX = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    )
+
+    const kind = viewport.width >= DESKTOP_MIN_WIDTH ? "desktop" : "mobile"
+    return { name: `${kind}-${viewport.width}x${viewport.height}`, viewport, png, path, overflowX }
+  } finally {
+    await browser.close()
+  }
+}
+
+/**
  * Solari preview URLs carry a required `?pt_token=...`, and they can also sit
  * under a base path. So append the test path to the base's pathname and leave
  * the query alone: plain concatenation would push the path inside the token
@@ -314,8 +388,14 @@ function snip(text: string, max = 200): string {
   return flat.length > max ? `${flat.slice(0, max)}...` : flat
 }
 
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+/**
+ * Playwright quotes the URL it was given, tokened query and all, so any message
+ * built from a caught error is sanitized here: pass the tokened target and it is
+ * swapped for its stripped form before the text reaches a Failure or a throw.
+ */
+function describe(err: unknown, target?: string): string {
+  const text = err instanceof Error ? err.message : String(err)
+  return target ? text.split(target).join(stripQuery(target)) : text
 }
 
 function sleep(ms: number): Promise<void> {
