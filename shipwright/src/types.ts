@@ -59,9 +59,19 @@ export interface Deployment {
   kill(): Promise<void>
 }
 
+/** Measured token usage, as reported by the API. Never estimated. */
+export interface TokenUsage {
+  /** Model calls made, whether or not the response reported token counts. */
+  calls: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface Brain {
   generate(idea: string): Promise<AppSpec>
   fix(spec: AppSpec, failures: Failure[]): Promise<AppSpec>
+  /** Cumulative usage so far. Absent in stub mode, which calls no model. */
+  usage?(): TokenUsage
 }
 
 export interface BrainOptions {

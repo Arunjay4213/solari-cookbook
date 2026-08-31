@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A calm, focused Pomodoro timer with session modes and a simple task list.">
+  <title>Focus — Pomodoro Timer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Focus timer home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <circle cx="16" cy="16" r="10"></circle>
+          <path d="M16 2v4M16 26v4M2 16h4M26 16h4"></path>
+        </svg>
+      </span>
+      <span>Focus</span>
+    </a>
+
+    <div class="header-actions">
+      <button class="icon-button" id="sound-toggle" type="button" aria-label="Turn notification sound on" aria-pressed="false">
+        <svg class="sound-on-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M11 5 6.5 9H3v6h3.5l4.5 4V5Z"></path>
+          <path d="M15 9.5a4 4 0 0 1 0 5M17.5 7a7.5 7.5 0 0 1 0 10"></path>
+        </svg>
+      </button>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Change color theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5a8.5 8.5 0 1 0 12 12Z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="timer-card" aria-labelledby="timer-heading">
+      <div class="mode-tabs" role="group" aria-label="Timer mode">
+        <button class="mode-button selected" id="focus-mode" type="button" data-mode="focus" data-minutes="25">Focus</button>
+        <button class="mode-button" id="short-mode" type="button" data-mode="short" data-minutes="5">Short break</button>
+        <button class="mode-button" id="long-mode" type="button" data-mode="long" data-minutes="15">Long break</button>
+      </div>
+
+      <div class="timer-copy">
+        <p class="eyebrow" id="timer-heading">Session 1 of 4</p>
+        <h1 id="mode-title">Time to focus</h1>
+        <p id="mode-description">Choose one task and give it your full attention.</p>
+      </div>
+
+      <div class="timer-wrap">
+        <div class="timer-ring" id="timer-ring" role="progressbar" aria-label="Focus time remaining" aria-valuemin="0" aria-valuemax="1500" aria-valuenow="1500">
+          <div class="timer-face">
+            <span class="time-display" id="time-display" aria-live="polite">25:00</span>
+            <span class="timer-state" id="timer-state">Ready when you are</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="timer-controls">
+        <button class="secondary-button" id="reset-button" type="button" aria-label="Reset timer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6M5.5 9A8 8 0 1 1 4 14"></path></svg>
+          <span>Reset</span>
+        </button>
+        <button class="primary-button" id="start-button" type="button">
+          <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5V7Z"></path></svg>
+          <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7v10M16 7v10"></path></svg>
+          <span id="start-label">Start focus</span>
+        </button>
+        <button class="secondary-button" id="skip-button" type="button" aria-label="Skip session">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 7 7 5-7 5V7ZM17 7v10"></path></svg>
+          <span>Skip</span>
+        </button>
+      </div>
+
+      <div class="status-region" id="status-region" aria-live="polite"></div>
+    </section>
+
+    <aside class="side-panel" aria-label="Session details">
+      <section class="panel-section task-section" aria-labelledby="task-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Today</p>
+            <h2 id="task-title">Focus tasks</h2>
+          </div>
+          <span class="task-count" id="task-count">0 tasks</span>
+        </div>
+
+        <form class="task-form" id="task-form">
+          <label class="sr-only" for="task-input">Add a focus task</label>
+          <input id="task-input" type="text" maxlength="80" autocomplete="off" placeholder="What will you focus on?" required>
+          <button id="add-task-button" type="submit" aria-label="Add task">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+        </form>
+        <ul class="task-list" id="task-list" aria-label="Focus tasks"></ul>
+        <div class="empty-state" id="empty-state">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M15 9h18a4 4 0 0 1 4 4v25H11V13a4 4 0 0 1 4-4Z"></path>
+            <path d="M19 9V7a5 5 0 0 1 10 0v2M18 20h12M18 27h8"></path>
+          </svg>
+          <p>Your focus list is clear.</p>
+          <span>Add one meaningful task to begin.</span>
+        </div>
+      </section>
+
+      <section class="panel-section progress-section" aria-labelledby="progress-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Daily rhythm</p>
+            <h2 id="progress-title">Your progress</h2>
+          </div>
+          <span class="streak-badge" title="Current streak">3 day streak</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <strong id="completed-count">0</strong>
+            <span>Sessions</span>
+          </div>
+          <div class="stat">
+            <strong id="focus-minutes">0m</strong>
+            <span>Focus time</span>
+          </div>
+        </div>
+        <div class="session-dots" aria-label="Four session cycle">
+          <span class="session-dot current"></span>
+          <span class="session-dot"></span>
+          <span class="session-dot"></span>
+          <span class="session-dot"></span>
+        </div>
+        <p class="progress-note">Complete four focus sessions, then enjoy a longer break.</p>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <span>Make time for what matters.</span>
+    <span class="shortcut-hint"><kbd>Space</kbd> start or pause</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

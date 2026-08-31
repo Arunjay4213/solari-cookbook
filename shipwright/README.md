@@ -90,6 +90,7 @@ The sandbox is killed on the way out, so nothing keeps billing.
 
 - OpenAI: roughly $1 to $3 per real run on `gpt-5.6-sol`, since the model emits every file in full on each iteration.
 `gpt-5.6-luna` via `--model` is much cheaper for experimenting.
+That range is an estimate, but you do not have to trust it: a real run records the token counts the API reported, per iteration and in total, in `transcript.json`, and prints the totals when it finishes.
 - Solari: cents per run.
 A run uses one sandbox for a few minutes and a handful of browser sessions that live for seconds each.
 - Stub mode costs no OpenAI money at all, only the Solari cents.

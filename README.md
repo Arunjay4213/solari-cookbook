@@ -1,5 +1,9 @@
 # Solari Cookbook
 
+> **This fork adds [shipwright](shipwright/)**: an agent that builds, deploys, and E2E-tests its own web apps on Solari.
+> One line of English in; a static app served from a Solari sandbox, verified by parallel recorded cloud browsers, and self-fixed until green.
+> See [shipwright/README.md](shipwright/README.md) and the [demo artifacts](shipwright/demo/).
+
 Short, runnable examples for [Solari](https://getsolari.com) — cloud browsers,
 sandboxes, and desktops behind one API key.
 

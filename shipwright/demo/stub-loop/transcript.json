@@ -1,0 +1,48 @@
+{
+  "idea": "todo app",
+  "mode": "stub",
+  "model": null,
+  "maxIters": 3,
+  "startedAt": "2026-08-31T21:12:58.760Z",
+  "finishedAt": "2026-08-31T21:13:36.553Z",
+  "app": "shipwright-todo",
+  "previewUrl": "https://5180e083f47c47b8c21e-8080.preview.getsolari.com",
+  "iterations": [
+    {
+      "iteration": 1,
+      "passed": false,
+      "testsRun": 2,
+      "failures": [
+        "[add-todo-desktop] assertion 4 of 4 (fill) failed on https://5180e083f47c47b8c21e-8080.preview.getsolari.com/: submitted \"#add-btn\" but afterwards nothing matching \"#todo-list li\" became visible within 5000ms",
+        "[add-todo-mobile] assertion 3 of 3 (fill) failed on https://5180e083f47c47b8c21e-8080.preview.getsolari.com/: submitted \"#add-btn\" but afterwards nothing matching \"#todo-list li\" became visible within 5000ms"
+      ],
+      "screenshots": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-1/screenshots/add-todo-desktop.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-1/screenshots/add-todo-mobile.png"
+      ],
+      "replays": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-1/replays/add-todo-desktop.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-1/replays/add-todo-mobile.ndjson"
+      ]
+    },
+    {
+      "iteration": 2,
+      "filesChanged": [
+        "app.js"
+      ],
+      "passed": true,
+      "testsRun": 2,
+      "failures": [],
+      "screenshots": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-2/screenshots/add-todo-desktop.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-2/screenshots/add-todo-mobile.png"
+      ],
+      "replays": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-2/replays/add-todo-desktop.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-12-58-758Z/iter-2/replays/add-todo-mobile.ndjson"
+      ]
+    }
+  ],
+  "status": "passed",
+  "error": null
+}

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url"
 import { createBrain } from "./brain.js"
 import { deploy } from "./sandbox.js"
 import { verify } from "./verify.js"
-import type { AppFile, AppSpec, Deployment } from "./types.js"
+import type { AppFile, AppSpec, Deployment, TokenUsage } from "./types.js"
 
 const DEFAULT_MODEL = "gpt-5.6-sol"
 const DEFAULT_MAX_ITERS = 3
@@ -114,6 +114,8 @@ interface IterationRecord {
   iteration: number
   /** Paths the fix before this iteration touched. Absent on iteration 1. */
   filesChanged?: string[]
+  /** Tokens spent producing this iteration's app: generate on 1, the fix after that. Absent in stub mode. */
+  usage?: TokenUsage
   passed: boolean
   testsRun: number
   failures: string[]
@@ -132,6 +134,8 @@ interface Transcript {
   /** Preview URL with its access token stripped: the sandbox is gone by the time anyone reads this. */
   previewUrl: string | null
   iterations: IterationRecord[]
+  /** Measured totals for the whole run. Null in stub mode, which calls no model. */
+  usage: TokenUsage | null
   /** "passed", "failed" after max-iters, or "error" when the loop itself broke. */
   status: "passed" | "failed" | "error"
   error: string | null
@@ -156,6 +160,7 @@ async function main(): Promise<number> {
     app: null,
     previewUrl: null,
     iterations: [],
+    usage: null,
     status: "error",
     error: null,
   }
@@ -168,9 +173,26 @@ async function main(): Promise<number> {
 
   let spec: AppSpec | null = null
   let deployment: Deployment | undefined
+  // Read in the finally as well, so a run that crashes still reports what it spent.
+  let readUsage: (() => TokenUsage) | undefined
 
   try {
     const brain = createBrain({ mode: opts.stub ? "stub" : "openai", model: opts.model })
+    readUsage = brain.usage
+
+    // Brain totals are cumulative; each iteration records only what it added.
+    let counted: TokenUsage = { calls: 0, inputTokens: 0, outputTokens: 0 }
+    const usageSinceLast = (): TokenUsage | undefined => {
+      const total = readUsage?.()
+      if (!total) return undefined
+      const delta = {
+        calls: total.calls - counted.calls,
+        inputTokens: total.inputTokens - counted.inputTokens,
+        outputTokens: total.outputTokens - counted.outputTokens,
+      }
+      counted = total
+      return delta
+    }
 
     console.log("\nGenerating app and tests...")
     spec = await brain.generate(opts.idea)
@@ -196,6 +218,7 @@ async function main(): Promise<number> {
       const record: IterationRecord = {
         iteration,
         filesChanged,
+        usage: usageSinceLast(),
         passed: result.passed,
         testsRun: spec.tests.length,
         failures: result.failures.map((f) => f.message),
@@ -243,6 +266,11 @@ async function main(): Promise<number> {
   } finally {
     // Write the record first: a crashed run should still leave a true story.
     transcript.finishedAt = new Date().toISOString()
+    transcript.usage = readUsage?.() ?? null
+    if (transcript.usage) {
+      const { calls, inputTokens, outputTokens } = transcript.usage
+      console.log(`\nopenai usage: ${inputTokens} in / ${outputTokens} out tokens over ${calls} call(s)`)
+    }
     await writeFile(join(runDir, "transcript.json"), `${JSON.stringify(transcript, null, 2)}\n`)
     if (spec) await writeApp(join(runDir, "final-app"), spec.files)
     console.log(`\nArtifacts`)

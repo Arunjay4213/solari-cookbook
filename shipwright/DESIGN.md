@@ -29,7 +29,8 @@ The transcript is written before the sandbox is killed, so a crashed run still l
 
 ## Module contract (frozen - see src/types.ts)
 
-- `src/brain.ts` - `createBrain({mode, model})` returns `{generate(idea), fix(spec, failures)}`.
+- `src/brain.ts` - `createBrain({mode, model})` returns `{generate(idea), fix(spec, failures)}`, plus an optional `usage()` reporting cumulative measured token counts.
+  `usage()` is present in openai mode only: stub mode calls no model, so it has nothing to report.
   `mode: "openai"` uses structured JSON output; `mode: "stub"` serves `fixtures/` (a todo app with one planted bug, plus its fixed version) so the whole loop runs E2E with zero OpenAI cost.
 - `src/sandbox.ts` - `deploy(files, opts)` returns `{url, redeploy(files), kill()}`.
 - `src/verify.ts` - `verify(url, tests, runDir, opts)` returns `{passed, failures, replayPaths, screenshotPaths}`.
@@ -41,5 +42,7 @@ The transcript is written before the sandbox is killed, so a crashed run still l
 ## Cost model
 
 - OpenAI: roughly $1-3 per real run on `gpt-5.6-sol` ($4/M in, $20/M out); `gpt-5.6-luna` for cheap runs.
+  The estimate is not load-bearing: every real run records the token counts the API reported, per iteration and in total, in `transcript.json`.
+  Tokens only, no dollar arithmetic in code, since prices change.
 - Solari: cents per run (sessions are minutes long and always killed).
 - Stub mode costs only Solari cents and must pass before any OpenAI run.

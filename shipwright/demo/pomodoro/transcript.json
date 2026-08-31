@@ -1,0 +1,34 @@
+{
+  "idea": "a pomodoro timer",
+  "mode": "openai",
+  "model": "gpt-5.6-sol",
+  "maxIters": 3,
+  "startedAt": "2026-08-31T21:15:49.484Z",
+  "finishedAt": "2026-08-31T21:17:51.770Z",
+  "app": "focus-pomodoro-timer",
+  "previewUrl": "https://4698ad12f2fa601c126a-8080.preview.getsolari.com",
+  "iterations": [
+    {
+      "iteration": 1,
+      "passed": true,
+      "testsRun": 5,
+      "failures": [],
+      "screenshots": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/screenshots/start-and-reset-focus-timer.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/screenshots/add-a-focus-task.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/screenshots/choose-long-break-mode.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/screenshots/toggle-sound-on-mobile.png",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/screenshots/skip-to-short-break-mobile.png"
+      ],
+      "replays": [
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/replays/start-and-reset-focus-timer.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/replays/add-a-focus-task.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/replays/choose-long-break-mode.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/replays/toggle-sound-on-mobile.ndjson",
+        "/home/arunj/projects/solari/solari-cookbook/shipwright/runs/2026-08-31T21-15-49-480Z/iter-1/replays/skip-to-short-break-mobile.ndjson"
+      ]
+    }
+  ],
+  "status": "passed",
+  "error": null
+}

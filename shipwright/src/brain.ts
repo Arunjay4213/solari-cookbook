@@ -1,7 +1,16 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import OpenAI from "openai"
-import type { AppFile, AppSpec, Assertion, Brain, BrainOptions, Failure, TestSpec } from "./types.js"
+import type {
+  AppFile,
+  AppSpec,
+  Assertion,
+  Brain,
+  BrainOptions,
+  Failure,
+  TestSpec,
+  TokenUsage,
+} from "./types.js"
 
 const DEFAULT_MODEL = "gpt-5.6-sol"
 
@@ -133,13 +142,18 @@ function openaiBrain(model: string): Brain {
     )
   }
   const client = new OpenAI({ apiKey })
+  // Accumulated across every call this brain makes, so one run reports one total.
+  const tally: TokenUsage = { calls: 0, inputTokens: 0, outputTokens: 0 }
 
   return {
+    usage: () => ({ ...tally }),
+
     async generate(idea: string) {
       return callModel(
         client,
         model,
         `Build a static web app for this idea, then write its end-to-end tests.\n\nIdea: ${idea}`,
+        tally,
       )
     },
 
@@ -155,7 +169,7 @@ function openaiBrain(model: string): Brain {
         "Failures:",
         ...failures.map(formatFailure),
       ].join("\n")
-      return callModel(client, model, input)
+      return callModel(client, model, input, tally)
     },
   }
 }
@@ -165,7 +179,12 @@ function formatFailure(f: Failure): string {
   return `- [${f.test}] ${f.message}${errors}`
 }
 
-async function callModel(client: OpenAI, model: string, input: string): Promise<AppSpec> {
+async function callModel(
+  client: OpenAI,
+  model: string,
+  input: string,
+  tally: TokenUsage,
+): Promise<AppSpec> {
   // Non-streaming overload: openai/resources/responses/responses.d.ts:51.
   const res = await client.responses.create({
     model,
@@ -175,6 +194,15 @@ async function callModel(client: OpenAI, model: string, input: string): Promise<
       format: { type: "json_schema", name: "app_spec", schema: APP_SPEC_SCHEMA, strict: true },
     },
   })
+
+  // Recorded before the output check: an incomplete response is still billed.
+  // `usage` is optional on Response (responses.d.ts:1010), so tokens are added
+  // only when the API actually reported them; the call is always counted.
+  tally.calls += 1
+  if (res.usage) {
+    tally.inputTokens += res.usage.input_tokens
+    tally.outputTokens += res.usage.output_tokens
+  }
 
   const text = res.output_text
   if (!text) {
