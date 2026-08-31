@@ -180,7 +180,7 @@ async function checkAssertion(page: Page, assertion: Assertion): Promise<string 
     case "text": {
       const missing = await visible(page, assertion.selector)
       if (missing) return missing
-      const actual = (await page.locator(assertion.selector).innerText()).trim()
+      const actual = (await page.locator(assertion.selector).first().innerText()).trim()
       if (actual.includes(assertion.contains)) return null
       return `expected "${assertion.selector}" to contain "${assertion.contains}", but its text is "${snip(actual)}"`
     }
@@ -196,7 +196,7 @@ async function checkAssertion(page: Page, assertion: Assertion): Promise<string 
       try {
         await page.locator(assertion.selector).fill(assertion.value, { timeout: ACTION_TIMEOUT_MS })
       } catch (err) {
-        return `could not type "${assertion.value}" into "${assertion.selector}" within ${ACTION_TIMEOUT_MS}ms: ${describe(err)}`
+        return `could not type "${assertion.value}" into "${assertion.selector}" within ${ACTION_TIMEOUT_MS}ms: ${detail(err)}`
       }
       const clickProblem = await click(page, assertion.submitSelector)
       if (clickProblem) return `filled "${assertion.selector}" but then ${clickProblem}`
@@ -206,21 +206,31 @@ async function checkAssertion(page: Page, assertion: Assertion): Promise<string 
   }
 }
 
+/**
+ * "At least one match is visible". `.first()` is required: locators are strict,
+ * so a selector matching several elements throws a strict-mode violation
+ * instead of waiting, and presence would be reported as absence.
+ */
 async function visible(page: Page, selector: string): Promise<string | null> {
   try {
-    await page.locator(selector).waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS })
+    await page.locator(selector).first().waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS })
     return null
-  } catch {
-    return `nothing matching "${selector}" became visible within ${ACTION_TIMEOUT_MS}ms`
+  } catch (err) {
+    return `nothing matching "${selector}" became visible within ${ACTION_TIMEOUT_MS}ms: ${detail(err)}`
   }
 }
 
+/**
+ * Deliberately strict, unlike `visible`: an action selector that matches
+ * several elements is a real bug in the app or the test, and the model should
+ * see it rather than have it silently resolved to the first match.
+ */
 async function click(page: Page, selector: string): Promise<string | null> {
   try {
     await page.locator(selector).click({ timeout: ACTION_TIMEOUT_MS })
     return null
-  } catch {
-    return `could not click "${selector}" within ${ACTION_TIMEOUT_MS}ms (missing, hidden, or covered by another element)`
+  } catch (err) {
+    return `could not click "${selector}" within ${ACTION_TIMEOUT_MS}ms - it may be missing, hidden, covered, or matching more than one element: ${detail(err)}`
   }
 }
 
@@ -396,6 +406,17 @@ function snip(text: string, max = 200): string {
 function describe(err: unknown, target?: string): string {
   const text = err instanceof Error ? err.message : String(err)
   return target ? text.split(target).join(stripQuery(target)) : text
+}
+
+/**
+ * First line of an underlying error, so a strict-mode violation reads as one
+ * instead of being reported as a missing element. First line only: the call log
+ * under it is long and quotes URLs. The locator helpers are not handed the
+ * tokened target, so any URL that does surface is stripped here instead.
+ */
+function detail(err: unknown): string {
+  const firstLine = describe(err).split("\n")[0]
+  return snip(firstLine.replace(/https?:\/\/[^\s"')]+/g, (url) => stripQuery(url)))
 }
 
 function sleep(ms: number): Promise<void> {
