@@ -1,0 +1,35 @@
+[
+  {
+    "name": "add-todo-desktop",
+    "path": "/",
+    "viewport": { "width": 1280, "height": 800 },
+    "assertions": [
+      { "kind": "exists", "selector": "#title" },
+      { "kind": "text", "selector": "#title", "contains": "Todo" },
+      { "kind": "exists", "selector": "#new-todo" },
+      {
+        "kind": "fill",
+        "selector": "#new-todo",
+        "value": "Ship the demo",
+        "submitSelector": "#add-btn",
+        "thenExists": "#todo-list li"
+      }
+    ]
+  },
+  {
+    "name": "add-todo-mobile",
+    "path": "/",
+    "viewport": { "width": 390, "height": 844 },
+    "assertions": [
+      { "kind": "exists", "selector": "#title" },
+      { "kind": "exists", "selector": "#new-todo" },
+      {
+        "kind": "fill",
+        "selector": "#new-todo",
+        "value": "Ship on mobile",
+        "submitSelector": "#add-btn",
+        "thenExists": "#todo-list li"
+      }
+    ]
+  }
+]

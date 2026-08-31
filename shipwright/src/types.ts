@@ -1,0 +1,71 @@
+// Frozen module contract for shipwright. Do not change shapes without updating
+// DESIGN.md and every module that consumes them.
+
+export interface AppFile {
+  /** Path relative to the app root, e.g. "index.html", "js/app.js". No leading slash. */
+  path: string
+  content: string
+}
+
+export type Assertion =
+  | { kind: "exists"; selector: string }
+  | { kind: "text"; selector: string; contains: string }
+  | { kind: "click"; selector: string; thenExists: string }
+  | { kind: "fill"; selector: string; value: string; submitSelector: string; thenExists: string }
+
+export interface TestSpec {
+  /** Unique, human-readable, e.g. "add-todo-mobile". */
+  name: string
+  /** URL path to open, e.g. "/" or "/about.html". */
+  path: string
+  viewport: { width: number; height: number }
+  assertions: Assertion[]
+}
+
+export interface AppSpec {
+  /** kebab-case app name. */
+  name: string
+  files: AppFile[]
+  tests: TestSpec[]
+}
+
+export interface Failure {
+  /** TestSpec.name, or "generic" for page-load/console checks. */
+  test: string
+  /** Text a model can act on: failed assertion, console error, HTTP status. */
+  message: string
+  consoleErrors: string[]
+}
+
+export interface VerifyResult {
+  passed: boolean
+  failures: Failure[]
+  /** Local files under runDir, downloaded before returning. */
+  replayPaths: string[]
+  screenshotPaths: string[]
+}
+
+export interface VerifyOptions {
+  /** Max concurrent browser sessions. Default 10, never exceed 10. */
+  concurrency?: number
+}
+
+export interface Deployment {
+  /** Public preview URL serving the app root. */
+  url: string
+  /** Overwrite app files in the same sandbox; static server needs no restart. */
+  redeploy(files: AppFile[]): Promise<void>
+  /** Destroys the VM (kill, not close). Idempotent. */
+  kill(): Promise<void>
+}
+
+export interface Brain {
+  generate(idea: string): Promise<AppSpec>
+  fix(spec: AppSpec, failures: Failure[]): Promise<AppSpec>
+}
+
+export interface BrainOptions {
+  mode: "openai" | "stub"
+  /** OpenAI model id, default "gpt-5.6-sol". Ignored in stub mode. */
+  model?: string
+}

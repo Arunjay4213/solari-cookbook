@@ -1,0 +1,19 @@
+{
+  "name": "shipwright",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solarisdk/browser": "^0.1.1",
+    "@solarisdk/sdk": "^0.1.2",
+    "openai": "^7.8.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

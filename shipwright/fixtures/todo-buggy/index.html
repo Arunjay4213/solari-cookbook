@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipwright Todo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__head">
+        <h1 id="title">Shipwright Todo</h1>
+        <p class="app__sub">A tiny list that ships.</p>
+      </header>
+
+      <div class="composer">
+        <input
+          id="new-todo"
+          class="composer__input"
+          type="text"
+          placeholder="What needs doing?"
+          autocomplete="off"
+        />
+        <button id="add-btn" class="composer__add" type="button">Add</button>
+      </div>
+
+      <ul id="todo-list" class="list"></ul>
+      <p id="empty" class="empty">Nothing here yet. Add your first task.</p>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
