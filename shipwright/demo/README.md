@@ -21,6 +21,7 @@ The failure text went back to the model, which corrected `app.js` and `style.css
 Iteration 2: all 4 tests green.
 
 - `iter1-filter-broken.png` / `iter2-filter-fixed.png` - the failing test's view, before and after the fix.
+- `iter1-filter-broken-replay.ndjson` - the rrweb session recording of the failing test, downloaded from Solari right after the session released.
 - `move-card-green.png` - another passing interaction from the green round.
 - `transcript.json` - the full record, including measured usage: 9,133 input and 21,334 output tokens over 2 calls, about $0.46 at current `gpt-5.6-sol` prices.
 
