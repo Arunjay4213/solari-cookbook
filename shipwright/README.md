@@ -2,43 +2,44 @@
 
 An agent that builds, deploys, and E2E-tests its own web apps on Solari.
 
-You give it one line of English.
-It writes a static web app and a test plan, ships the app to a cloud sandbox with a public preview URL, drives that URL in real cloud browsers, and reads its own failures back to itself until the tests pass.
+You give it one line of English, and it writes a static web app and a test plan.
+It ships the app to a cloud sandbox with a public preview URL, drives that URL in real cloud browsers, and feeds its own failures back to itself until the tests pass.
 
 ## How the loop works
 
-1. **Generate.**
-An OpenAI model turns the idea into a complete static app (HTML, CSS, JS) plus 3 to 6 end-to-end tests spread across desktop, tablet, and mobile viewports.
-Both come back in one structured JSON response.
-2. **Deploy.**
-The files are written into a Solari sandbox (a microVM) and served by `python3 -m http.server`.
-Solari's port preview turns that port into a public HTTPS URL, so anything with a browser can reach the app - including the test browsers, and you.
-3. **Verify.**
-Each test gets its own Solari cloud browser, and they run in parallel (capped at 10 at a time).
-Every session records itself, so each test produces an rrweb replay you can scrub through afterwards, plus a full-page screenshot at its final state.
-4. **Fix.**
-Failures go back to the model as text only: the assertion that failed, what was expected, what was actually on the page, and any console errors.
-Screenshots and replays are for humans and are never sent to the model.
-The model returns the whole corrected app, and the same sandbox is redeployed in place.
-5. **Repeat** until the tests are green or `--max-iters` is reached, then report honestly either way.
+1. Generate.
+   An OpenAI model turns the idea into a complete static app (HTML, CSS, JS) plus 3 to 6 end-to-end tests spread across desktop, tablet, and mobile viewports, all in one structured JSON response.
+2. Deploy.
+   The files are written into a Solari sandbox (a microVM) and served by `python3 -m http.server`.
+   Solari's port preview gives that port a public HTTPS URL, so anything with a browser can reach the app, including the test browsers and you.
+3. Verify.
+   Each test gets its own Solari cloud browser, and they run in parallel, at most 10 at a time.
+   Every session is recorded, so each test leaves an rrweb replay you can scrub through afterwards and a full-page screenshot of its final state.
+4. Fix.
+   Failures go back to the model as text only: the assertion that failed, what was expected, what was actually on the page, and any console errors.
+   Screenshots and replays are for people to look at and are never sent to the model.
+   The model returns the whole corrected app, and it is redeployed into the same sandbox.
+5. Repeat until the tests are green or `--max-iters` is reached, and report the outcome either way.
 
-One sandbox lives for the whole run and is always killed at the end, on success, failure, or crash.
+One sandbox is used for the whole run, and it is always killed at the end, whether the run succeeds, fails, or crashes.
 
 ### Phase 2: visual review
 
-Passing tests only prove the app works, not that it looks like anything.
-So once the tests are green, the agent looks at what it built.
+Passing tests show that the app works and say nothing about how it looks, so once the tests are green the agent looks at what it built.
 
-It screenshots the running app at 1280x800 and 390x844, one viewport-sized image each, and measures whether the page scrolls sideways at either size.
-Those images go to the model, which is the one deliberate exception to the text-only rule.
-The model either approves the design or returns a list of concrete issues plus the complete restyled app.
-After every restyle the functional tests run again, because a layout change can easily break a selector a test depends on.
-If that happens, the agent spends one functional fix round to get back to green before continuing.
+It takes one viewport-sized screenshot of the running app at 1280x800 and one at 390x844, and measures whether the page scrolls sideways at either size.
+Those images go to the model, the one deliberate exception to the text-only rule.
+The model either approves the design or returns a list of concrete issues along with the complete restyled app.
+The functional tests run again after every restyle, because a layout change can easily break a selector that a test depends on.
+If one does break, the agent spends one functional fix round getting back to green before it continues.
 
-The loop stops when the model approves, when `--visual-iters` is reached, or when a round repeats the previous round's issues word for word, which means it has stopped converging.
-Visual review is real mode only: stub mode has no model to review with, and says so instead of pretending.
+The loop stops when the model approves, when `--visual-iters` is reached, or when a round repeats the previous round's issues word for word (a sign that it has stopped converging).
+Visual review only runs in real mode.
+Stub mode has no model to do the review, and it says so.
 
-Status, stated honestly: every phase 2 component is verified against the live APIs (the vision review with real calls on both branches, the capture path against a live browser), and the orchestration is proven in stub mode, but a full end-to-end visual run has not completed yet - the two runs that reached for it surfaced and paid for two real harness bugs (both fixed, both documented in the git history) before the credit budget ran out.
+Current status: every phase 2 component has been checked against the live APIs, with real calls for both branches of the vision review and the capture path run against a live browser, and the orchestration works in stub mode.
+A full end-to-end visual run has not completed yet.
+The two runs that got that far each hit a real harness bug (both are fixed and documented in the git history), and then the credit budget ran out.
 
 ## Quickstart
 
@@ -56,7 +57,7 @@ OPENAI_API_KEY=your-openai-key
 ```
 
 `OPENAI_API_KEY` is only needed for real runs.
-`.env` is gitignored, and no key is ever printed.
+`.env` is gitignored, and keys are never printed.
 
 Real run:
 
@@ -71,9 +72,9 @@ npm start -- --stub "todo app"
 ```
 
 Stub mode replaces the model with fixtures: a todo app whose Add button is wired to `#addBtn` while the markup says `id="add-btn"`.
-The button silently does nothing, and no console error is raised, so only a real click in a real browser catches it.
+Clicking the button does nothing and raises no console error, so only a real click in a real browser catches the bug.
 Iteration 1 fails on the fill assertion, the stub "fix" returns the corrected file, and iteration 2 is green.
-It exercises the entire loop - sandbox, preview URL, parallel browsers, recording, redeploy - for a few cents of Solari credit.
+That runs the whole loop (sandbox, preview URL, parallel browsers, recording, and redeploy) for a few cents of Solari credit.
 
 Options:
 
@@ -85,10 +86,10 @@ Options:
 --visual-model <id> model for the visual review (default gpt-5.6-luna)
 ```
 
-The visual review runs on a different model by default, and that is a workaround rather than a preference.
-A review request carries two screenshots, and on a low API tier that single request is larger than the account's per-minute token allowance for `gpt-5.6-sol`, so it fails with a 429 that no retry can fix.
+The visual review uses a different model by default to work around a rate limit.
+A review request carries two screenshots, and on a low API tier that one request is larger than the account's per-minute token allowance for `gpt-5.6-sol`, so it fails with a 429 that retrying cannot fix.
 `gpt-5.6-luna` has room for it.
-If you hit that limit anyway, the error says so and points at `--visual-model`.
+If you hit the limit anyway, the error message says so and points you to `--visual-model`.
 
 ## What you get
 
@@ -96,55 +97,52 @@ The console prints each iteration, every failure message in full, the live previ
 
 Every run writes `runs/<timestamp>/`:
 
-- `iter-1/screenshots/`, `iter-2/screenshots/` - a full-page PNG per test per iteration, at the exact viewport the test used.
-- `iter-N/replays/` - the rrweb recording of each browser session, so you can replay what the agent saw.
-- `visual-1/`, `visual-2/` - one directory per visual review round, holding the screenshots the model was shown, and, when the round asked for changes, a `recheck/` with the functional tests rerun after the restyle.
-- `final-app/` - the app files as they stood at the end of the run.
-- `transcript.json` - the idea, the mode and model, and per iteration: which files the fix changed, which tests ran, and the full text of every failure, ending in `passed`, `failed`, or `error`.
-No access token appears in the transcript: the recorded preview URL and every failure message name the page without its query string.
-The console prints the full URL while the run is live so you can open the app yourself, and the sandbox is destroyed when the run ends.
+- `iter-1/screenshots/`, `iter-2/screenshots/`: a full-page PNG for each test in each iteration, at the exact viewport the test used.
+- `iter-N/replays/`: the rrweb recording of each browser session, so you can replay what the agent saw.
+- `visual-1/`, `visual-2/`: one directory per visual review round with the screenshots the model was shown, plus a `recheck/` with the rerun functional tests when the round asked for changes.
+- `final-app/`: the app files as they were at the end of the run.
+- `transcript.json`: the idea, the mode and model, and for each iteration the files the fix changed, the tests that ran, and the full text of every failure, ending in `passed`, `failed`, or `error`.
+The transcript contains no access token, because the recorded preview URL and the failure messages name the page without its query string.
+While the run is live the console prints the full URL so you can open the app yourself, and the sandbox is destroyed when the run ends.
 
 `runs/` is gitignored.
-Artifacts are copied into the repo by hand when they are worth showing, never committed wholesale.
+Artifacts worth showing are copied into the repo by hand; the whole directory is never committed.
 
-The preview URL stays live only while the run is going.
+The preview URL only works while the run is going.
 The sandbox is killed on the way out, so nothing keeps billing.
 
 ## Cost notes
 
-- OpenAI: roughly $1 to $3 per real run on `gpt-5.6-sol`, since the model emits every file in full on each iteration.
+- OpenAI costs roughly $1 to $3 per real run on `gpt-5.6-sol`, because the model writes out every file in full on each iteration.
 `gpt-5.6-luna` via `--model` is much cheaper for experimenting.
-That range is an estimate, but you do not have to trust it: a real run records the token counts the API reported, per iteration and in total, in `transcript.json`, and prints the totals when it finishes.
-The screenshots themselves are cheap, around 700 input tokens each; what phase 2 actually costs is the model returning every file in full on each round it is not happy.
-- Solari: cents per run.
-A run uses one sandbox for a few minutes and a handful of browser sessions that live for seconds each.
+That range is an estimate, but you can check it: a real run records the token counts the API reported, per iteration and in total, in `transcript.json`, and prints the totals when it finishes.
+The screenshots are cheap, around 700 input tokens each; most of the phase 2 cost is the model returning every file in full on each round where it wants changes.
+- Solari costs cents per run.
+A run uses one sandbox for a few minutes and a handful of browser sessions that last seconds each.
 Phase 2 adds two short browser sessions per round for the captures, plus the recheck.
-- Stub mode costs no OpenAI money at all, only the Solari cents.
-- Every session ends in `kill()`, in a `finally` that also runs when the loop throws.
-Nothing is left running after the process exits.
+- Stub mode costs no OpenAI money, only the Solari cents.
+- Every session ends in `kill()`, inside a `finally` that also runs when the loop throws, so nothing is left running after the process exits.
 
 ## Limitations
 
-These are real, and worth knowing before you judge the output.
+Shipwright only builds static apps: plain HTML, CSS, and JS with no build step, no npm packages, and no backend.
+Anything that needs a server or persistence is out of scope.
 
-- **Static apps only.**
-Plain HTML, CSS, and JS with no build step, no npm packages, and no backend.
-Anything needing a server or persistence is out of scope.
-- **Four assertion kinds.**
+There are four kinds of assertion.
 A test can check that an element exists, that an element contains text, that a click makes something appear, or that filling a field and submitting makes something appear.
-That catches broken wiring and dead buttons well.
-It does not check layout, styling, animation, or anything about how the app looks.
-- **The model grades its own taste.**
-In phase 2 the model reviews its own screenshots against no reference design, no brand, and no brief beyond the original one-line idea.
-"Approved" means it found nothing more it wanted to change, not that the design is objectively good or pixel perfect.
-The one part of that judgment that is not a matter of taste is the horizontal-overflow check, which is measured in the browser rather than eyeballed.
-- **Functional tests are still text only.**
-Outside phase 2 the model never sees a screenshot, so it cannot notice a page rendering badly as long as the assertions pass.
-- **Both budgets are capped.**
-After `--max-iters` verify rounds the run stops and exits non-zero with the remaining failures.
-Phase 2 stops after `--visual-iters` rounds whether or not the model is satisfied.
-Neither loop keeps trying.
-- **The model writes its own tests.**
-A generated test suite can be weak, and passing tests mean the app satisfies the tests it wrote, not that it is correct.
-- **`--showcase` is not implemented.**
-Opening the finished app on a Solari desktop is designed but deferred.
+That is good at catching broken wiring and dead buttons, but it does not check layout, styling, animation, or anything else about how the app looks.
+
+In phase 2 the model judges its own screenshots, with no reference design, no brand, and no brief beyond the original one-line idea.
+"Approved" only means it found nothing more it wanted to change, which says little about whether the design is objectively good or pixel perfect.
+The horizontal-overflow check is the one objective part of that review, since it is measured in the browser.
+
+Outside phase 2 the tests are text only and the model never sees a screenshot, so a page can render badly without the model noticing as long as the assertions pass.
+
+Both loops have a hard cap.
+After `--max-iters` verify rounds the run stops and exits non-zero with the remaining failures, and phase 2 stops after `--visual-iters` rounds whether or not the model is satisfied.
+
+The model also writes its own tests.
+A generated test suite can be weak, and passing it only means the app satisfies the tests the model wrote, which is different from the app being correct.
+
+`--showcase` is not implemented.
+Opening the finished app on a Solari desktop is designed but has been put off for now.
